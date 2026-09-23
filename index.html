@@ -181,7 +181,72 @@
   .game-chip .m { color: var(--chalk); }
   .game-chip .l { display: block; color: var(--chalk-dim); font-size: 0.68rem; margin-top: 1px; }
 
+  .day-cell.expandable { cursor: pointer; transition: border-color 0.15s ease, transform 0.1s ease; }
+  .day-cell.expandable:hover { border-color: var(--clay-bright); }
+  .day-cell.expandable:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
   .more-tag { font-size: 0.68rem; color: var(--chalk-dim); padding-left: 5px; }
+
+  .modal-backdrop {
+    display: none;
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(6, 12, 25, 0.72);
+    backdrop-filter: blur(3px);
+    align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal-card {
+    background: linear-gradient(180deg, var(--night-2) 0%, var(--night) 100%);
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    max-width: 440px;
+    width: 100%;
+    max-height: min(80vh, 640px);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .modal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 20px; border-bottom: 1px solid var(--line);
+  }
+  .modal-title {
+    font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 1.05rem;
+    color: var(--chalk);
+  }
+  .modal-close {
+    background: transparent; border: 1px solid var(--line-strong); color: var(--chalk-dim);
+    width: 30px; height: 30px; border-radius: 3px; cursor: pointer; font-size: 0.9rem;
+    display: flex; align-items: center; justify-content: center;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  .modal-close:hover { border-color: var(--clay-bright); color: var(--chalk); }
+  .modal-close:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+  .modal-body {
+    padding: 14px 20px 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .modal-game {
+    background: linear-gradient(180deg, var(--field) 0%, var(--field-2) 100%);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 12px 14px;
+  }
+  .modal-game .mtime {
+    font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 0.88rem;
+    color: var(--amber); margin-bottom: 4px;
+  }
+  .modal-game .mteams {
+    font-family: 'Inter', sans-serif; font-weight: 600; font-size: 0.98rem;
+    color: var(--chalk);
+  }
+  .modal-game .mloc {
+    font-size: 0.84rem; color: var(--chalk-dim); margin-top: 2px;
+  }
 
   .empty-state {
     text-align: center; padding: 60px 20px; color: var(--chalk-dim);
@@ -245,6 +310,16 @@
   </div>
   <div class="cal-grid" id="calGrid"></div>
 </main>
+
+<div class="modal-backdrop" id="dayModal">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-head">
+      <div class="modal-title" id="modalTitle"></div>
+      <button class="modal-close" id="modalClose" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
 
 <footer>
   Schedule shown reflects the data currently loaded on this page.
@@ -332,7 +407,9 @@
   function teamList() {
     const set = new Set();
     GAMES.forEach(g => { set.add(g.home); set.add(g.away); });
-    return Array.from(set).sort();
+    return Array.from(set)
+      .filter(t => t.toUpperCase().startsWith("NLL"))
+      .sort();
   }
 
   function parseDate(iso) {
@@ -438,6 +515,17 @@
         cell.appendChild(more);
       }
 
+      if (dayGames.length > 0) {
+        cell.classList.add("expandable");
+        cell.setAttribute("tabindex", "0");
+        cell.setAttribute("role", "button");
+        cell.setAttribute("aria-label", `${dayGames.length} game${dayGames.length > 1 ? "s" : ""} on ${iso}, view all`);
+        cell.addEventListener("click", () => openDayModal(iso, dayGames));
+        cell.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDayModal(iso, dayGames); }
+        });
+      }
+
       grid.appendChild(cell);
     }
 
@@ -448,6 +536,44 @@
       grid.appendChild(empty);
     }
   }
+
+  // ---------------------------------------------------------------
+  // Day-detail modal (expand a cell to see every game that day)
+  // ---------------------------------------------------------------
+  function openDayModal(iso, dayGames) {
+    const modal = document.getElementById("dayModal");
+    const title = document.getElementById("modalTitle");
+    const body = document.getElementById("modalBody");
+
+    const p = parseDate(iso);
+    title.textContent = new Date(p.y, p.m, p.d).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+
+    body.innerHTML = "";
+    dayGames.forEach(g => {
+      const row = document.createElement("div");
+      row.className = "modal-game";
+      row.innerHTML = `
+        <div class="mtime">${g.time}</div>
+        <div class="mteams">${g.away} @ ${g.home}</div>
+        <div class="mloc">${g.location}</div>
+      `;
+      body.appendChild(row);
+    });
+
+    modal.classList.add("open");
+  }
+
+  function closeDayModal() {
+    document.getElementById("dayModal").classList.remove("open");
+  }
+
+  document.getElementById("modalClose").addEventListener("click", closeDayModal);
+  document.getElementById("dayModal").addEventListener("click", (e) => {
+    if (e.target.id === "dayModal") closeDayModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeDayModal();
+  });
 
   document.getElementById("prevBtn").addEventListener("click", () => {
     viewMonth--;
